@@ -1,0 +1,30 @@
+<html>
+        <head>
+                <title>Hangman</title>
+
+                <!-- include swfobject library -->
+                <script type="text/javascript" src="swfobject.js"></script>
+        </head>
+        
+        <body style="text-align:center;background-color:#FFFFFF;margin-top:0;margin-left:0">
+        <script type="text/javascript">
+				//define your flashVars from the URL GET string
+				  var flashVars = {};
+				  var strHref = window.location.href;
+				  if ( strHref.indexOf("?") > -1 ) {
+					var strQueryString = strHref.substr(strHref.indexOf("?")+1);
+					var aQueryString = strQueryString.split("&");
+					for ( var iParam = 0; iParam < aQueryString.length; iParam++ ) {
+					  var aParam = aQueryString[iParam].split("=");
+					  flashVars[aParam[0]] = aParam[1];
+					}
+				  }
+				swfobject.embedSWF("FacebookDemoQuiz.swf", "flashContent", "580", "500", "9.0.0", "expressInstall.swf", flashVars);
+		</script>
+			
+				<!--  this is where your flash content will be placed when created -->
+				
+				<div id="flashContent" style="width:100%;text-align:center;"></div>
+                
+        </body>
+</html>

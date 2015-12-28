@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" width="580" height="500" borderColor="#FCFCFC" themeColor="#314857" backgroundGradientAlphas="[1.0, 1.0]" backgroundGradientColors="[#FFFFFF, #FFFFFF]"
+	applicationComplete="init()">
+
+<mx:Script>
+	<![CDATA[
+		import com.facebook.data.users.GetStandardInfoData;
+		import com.facebook.commands.users.GetStandardInfo;
+		import com.facebook.data.stream.ProfileData;
+///////////////////////////////////////////////////////////Imports and variables///////////////////////////////////////////////////////////////////
+
+		import com.facebook.Facebook;
+		import com.facebook.commands.notifications.SendEmail;
+		import com.facebook.commands.data.IncHashValue;
+		import com.facebook.commands.data.UpdateObject;
+		import com.facebook.commands.auth.GetSession;
+		import com.facebook.commands.auth.PromoteSession;
+		import com.facebook.commands.profile.SetInfo;
+		import com.facebook.commands.profile.ProfileGetInfo;
+		import com.facebook.commands.users.GetInfo;
+		import com.facebook.commands.friends.GetFriends;
+		import com.facebook.commands.notifications.SendNotification;
+		import com.facebook.commands.photos.GetAlbums;
+		import com.facebook.commands.profile.SetFBML;
+		import com.facebook.data.users.FacebookUser;
+		import com.facebook.data.users.GetInfoData;
+		import com.facebook.data.stream.StreamFilterCollection;
+		import com.facebook.data.notifications.NotificationMessageData;
+		import com.facebook.data.friends.GetFriendsData;
+		import com.facebook.data.photos.GetAlbumsData;
+		import com.facebook.data.profile.InfoItemData;
+		import com.facebook.data.profile.InfoItemCollection;
+		import com.facebook.data.profile.InfoFieldsData;
+		import com.facebook.data.users.GetInfoFieldValues;
+		import com.facebook.utils.FacebookSessionUtil;
+		import com.facebook.events.FacebookEvent;
+		import com.facebook.net.FacebookCall;
+		import mx.collections.ArrayCollection;
+		import mx.effects.AddItemAction;
+		import mx.controls.Alert;
+		import mx.events.CloseEvent;
+		import mx.events.CollectionEvent;
+		import mx.events.ListEvent;
+		import mx.events.CloseEvent;
+		import flash.net.navigateToURL;
+		
+		//Facebook variables
+		private var user:FacebookUser;
+		private var fbook:Facebook;
+		private var session: FacebookSessionUtil;
+		
+		//Bound objects
+		[Bindable] private var photoAlbums:ArrayCollection;
+		private var allFriends:Array;
+		[Bindable] private var allFriendsCollection:ArrayCollection;
+		[Bindable] private var userDisplayInfo:String = "";
+		[Bindable] private var facebookMode:Boolean = false;
+		[Bindable]
+		public var chosenFriends:ArrayCollection = new ArrayCollection();
+				
+		private function init() : void
+		{
+			//If a Facebook parameter was sent in, that means we're being called inside of Facebook.
+			if(loaderInfo && loaderInfo.parameters && loaderInfo.parameters.fb_sig_added)
+			{
+				facebookMode = true;
+				fbook = new Facebook();
+				//Overview of FacebookSessionUtil:
+				//pulls session key out of loaderInfo if not sent as second param
+				//retrieves existing session key from SharedObject if it exists, otherwise
+				//uses the one passed in.
+				//Calls facebook.startSession which 
+				//raises connect event (success)
+				//handled by onFacebookReady which stores facebook session key and secret
+				//in SharedObject.
+				session=new FacebookSessionUtil( loaderInfo.parameters.fb_sig_api_key,"", loaderInfo);
+				//If they haven't added our application yet, we need to prompt them to Allow Access.
+				if(loaderInfo.parameters.fb_sig_added==false && loaderInfo.parameters.fb_sig_api_key && loaderInfo.parameters.fb_sig_api_key!="")
+				{
+					//Show a "redirecting" message and pass the puzzle to the login page. Facebook's login page
+					//also doubles as the Allow Access page.
+					//Set the "next" qs variable to our app + plus the puzzle qs variable, so they comeback here.
+					//Alert.show("Redirecting to the Allow Access / Login page");
+					var applicationUrl:URLRequest = new URLRequest("http://www.facebook.com/login.php?return_session=0&api_key=" + loaderInfo.parameters.fb_sig_api_key + "&next=http://apps.facebook.com/testdemoquiz?take=" + loaderInfo.parameters.take + "&canvas=");
+					navigateToURL(applicationUrl, "_top");					
+					return; 
+				}
+				
+				fbook = session.facebook;
+				photoAlbums = new ArrayCollection();
+				allFriends = new Array();
+ 				session.addEventListener(FacebookEvent.CONNECT, onConnect,false,0,true);
+				//This validates that we have a session, and raises the connect event.
+				//if it's a web session (which it is except for local debugging). it calls
+				//refreshSession, which does nothing.
+				session.validateLogin();
+				//Alert.show(fbook.api_key + "=fbook.apikey " + fbook.session_key + "=fbook.session_key " + fbook.secret + "=fbook.secret");
+				//Display friend's take if one was sent
+				if(loaderInfo.parameters && loaderInfo.parameters.take)
+				{
+					txtFriendsTake.text = decodeURIComponent(loaderInfo.parameters.take);
+				}
+			}					
+		}
+		
+		private function onConnect(e:FacebookEvent):void
+		{ 
+			//Alert.show("We are in onConnect. success=" + e.success.toString() + " uid=" + loaderInfo.parameters.fb_sig_canvas_user );
+				if(e.success && fbook.uid != null)
+				{
+					var call:FacebookCall = fbook.post(new
+    				GetInfo([fbook.uid],[GetInfoFieldValues.ALL_VALUES]));  
+    				call.addEventListener(FacebookEvent.COMPLETE, onGetInfo, false, 0, true);
+    			}
+    			else if(loaderInfo.parameters && loaderInfo.parameters.fb_sig_canvas_user != "")
+    			{
+    				//svar fbook2:Facebook = new Facebook();
+					//Alert.show("Calling ProfileGetInfo user=" + loaderInfo.parameters.fb_sig_canvas_user);
+/*     				var profileCall:FacebookCall = fbook.post(new
+    				ProfileGetInfo(loaderInfo.parameters.fb_sig_canvas_user ));  
+    				profileCall.addEventListener(FacebookEvent.COMPLETE, onProfileGetInfo, false, 0, true); */
+    				var userCall:FacebookCall = fbook.post(new GetStandardInfo([loaderInfo.parameters.fb_sig_canvas_user], ["first_name"]));
+    				userCall.addEventListener(FacebookEvent.COMPLETE, onGetInfo, false, 0, true);
+    			}
+    			else
+    			{
+    				var errorMessage:String = e.error?e.error.errorMsg:"no error message";
+    				Alert.show("Failed to connect to Facebook: " + errorMessage);
+    				userDisplayInfo = "Connection failure: " + errorMessage;
+    			}
+		}
+		
+	/*
+	   //Still testing this.
+	 	private function onGetStandardInfo(e:FacebookEvent):void
+		{
+			if(e.success && e.data as GetStandardInfoData)
+			{
+				var userData:GetStandardInfoData = (e.data as GetStandardInfoData);
+				Alert.show("profile data returned");
+				user=(e.data as GetInfoData).userCollection.getItemAt(0) as FacebookUser;
+				userDisplayInfo = "Welcome " + user.first_name;
+			}
+			else
+			{ Alert.show("Standard Error message Error:ID=" + e.error.errorCode.toString() + " Msg=" +  e.error.errorMsg); }
+		}
+		
+		private function onProfileGetInfo(e:FacebookEvent):void
+		{
+			//Alert.show("in profile get info. success=" + e.success);
+			if(e.success && e.data as ProfileData)
+			{
+				var profileData:ProfileData = (e.data as ProfileData);
+				Alert.show("profile data returned");
+				userDisplayInfo = profileData.name;
+			}
+			else
+			{ Alert.show("Error:ID=" + e.error.errorCode.toString() + "Msg=" +  e.error.errorMsg); }
+		} */
+		
+		//handler for onConnect handler... onConnect requests userInfo by uid, 
+		//here we store and display that user info.
+		private function onGetInfo(e:FacebookEvent):void
+		{
+			if(e.data && (e.data as GetInfoData).userCollection != null)
+			{
+				user=(e.data as GetInfoData).userCollection.getItemAt(0) as FacebookUser;
+			}
+			if(user != null){
+				userDisplayInfo = "Hello, " + user.first_name + ".";
+			} else { 
+				userDisplayInfo = "Facebook User Not Found!!!"; 
+			}
+		}
+		private function onGetInfoComplete(e:FacebookEvent):void{
+				var getInfoData:GetInfoData = e.data as GetInfoData;
+				
+				if( !getInfoData || e.error){
+					Alert.show( "Problem getting friends by their userids" );
+					return;
+				}
+				allFriends = getInfoData.userCollection.toArray();	
+				allFriendsCollection = new ArrayCollection(allFriends);
+			}
+		//////////////////////////////////////////////////////////////////Get Friends//////////////////////////////////////////////////////////////////////////////////
+		
+			public function goToSend():void
+			{
+				currentState='ShowFriends';
+				if(allFriends.length == 0 && fbook.uid){
+					getFriends();
+				}
+			}
+				private function getFriends():void{
+				//Only get friends if you haven't 
+				//already retrieved them.
+				if(allFriends.length == 0 && fbook.uid){
+					var call:FacebookCall = fbook.post( new GetFriends() );
+					call.addEventListener(FacebookEvent.COMPLETE, getFriendsReply);
+				}
+			}
+					
+			private function getFriendsReply(e:FacebookEvent):void{
+				var friendsResponseData:GetFriendsData = e.data as GetFriendsData;
+				
+				if(!friendsResponseData || e.error){
+					Alert.show("no friends were retrieved for facebook userid:" + fbook.uid.toString());
+					return
+				}
+				//The only thing returned from the GetFriends call is an array of all the
+				//user's friends, but the only thing populated is the uid (!). Just a big
+				//honkin', mostly empty ArrayCollection instead of just an array of ids.
+				//now make an array of those uids and send them to GetInfo()
+				var friendUIDs:Array = new Array();
+				var friends:Array = friendsResponseData.friends.toArray();
+				for each(var friend:FacebookUser in friends){
+					friendUIDs.push(friend.uid);
+				}
+				
+				var getInfo:GetInfo = new GetInfo(friendUIDs, new Array('name', 'pic_square', 'uid' ) );
+				var call:FacebookCall = fbook.post(getInfo);
+				call.addEventListener(FacebookEvent.COMPLETE, onGetInfoComplete)
+			}
+			
+		/////////////////////////////////////////////////////////////////End Get Friends///////////////////////////////////////////////////////////////////////////
+		
+		/////////////////////////////////////////////////////////////////////////Add remove friends/////////////////////////////////////////////////////////////////////////
+			public function addFriend(e:Event):void
+			{
+					chosenFriends.addItem(e.target.data);
+					allFriendsCollection.removeItemAt(grdFriends.selectedIndex);
+			}
+
+			public function removeFriend(e:Event):void
+			{
+					allFriendsCollection.addItemAt(chosenFriends.getItemAt(grdChosenFriends.selectedIndex), 0);
+					chosenFriends.removeItemAt(grdChosenFriends.selectedIndex);
+					chosenFriends.refresh();
+			}
+			
+			///////////////////////////////////////////////////////////////////////// Sending Notification functionality /////////////////////////////////////////////////////////////////////////
+			//Sends the notification to the array of selected users. The notification will arrive in their notification window as a hyperlink.
+			//When the Actionscript API supports sending invites or requests, this should be revised to be a request.
+			private function sendNotification():void
+			{
+					//ids[0] = "1044369797"; //-Bogu Suser 
+					var chosenUserIdArray:Array = createArrayOfChosenUserIds(chosenFriends);
+					var sendNotificationCall:SendNotification = new SendNotification(chosenUserIdArray, "<a href='http://apps.facebook.com/testdemoquiz?take=" +  txtTake.text + "'>Here's my take on this.</a>");
+					var call:FacebookCall = fbook.post(sendNotificationCall);
+					call.addEventListener(FacebookEvent.COMPLETE, onSendNotificationComplete, false,0,true);
+			}
+			
+			private function createArrayOfChosenUserIds(chosenUsers:ArrayCollection):Array
+			{
+				var chosenUserIds:Array = new Array();
+				for each(var chosenUser:Object in chosenFriends)
+				{
+					var fbUser:FacebookUser = chosenUser as FacebookUser;
+					chosenUserIds.push(fbUser.uid);
+				}
+				return chosenUserIds;
+			}
+			
+			private function onSendNotificationComplete(e:FacebookEvent):void
+			{				
+				if(e.error)
+				{
+					Alert.show(e.error.errorMsg);
+				}
+				else
+				{
+					Alert.show("Your message was sent");					
+				}
+			}
+
+]]>
+</mx:Script>
+	<mx:states>
+		<mx:State name="ShowFriends">
+			<mx:RemoveChild target="{txtFriendsTake}"/>
+			<mx:RemoveChild target="{button2}"/>
+			<mx:RemoveChild target="{txtUserInfo}"/>
+			<mx:RemoveChild target="{phone}"/>
+			<mx:AddChild position="lastChild">
+				<mx:Button x="10" y="468" label="Back to Quiz" id="btnQuiz" click="currentState=''"/>
+			</mx:AddChild>
+			<mx:AddChild id="ListOfFriends" >			
+			<mx:target>
+				<mx:DataGrid id="grdChosenFriends" dataProvider="{chosenFriends}" x="304" y="64"  width="266" alpha="0.3" textRollOverColor="#FF0000" height="369" alternatingItemColors="[#C2EACE, #FFFFFF]">
+					<mx:columns>
+							<mx:DataGridColumn headerText="Puzzle Recipients" dataField="uid">
+								<mx:itemRenderer>
+								<mx:Component>
+									<mx:Button  click="outerDocument.removeFriend(event)"  label="Remove {data.name}" color="#8E4F25"  initialize="init()"  labelPlacement="right" fillAlphas="[1.0, 1.0]" fillColors="[#F9F7D5, #F9F7D5]" alpha="0.0">
+									</mx:Button>
+								</mx:Component>
+								</mx:itemRenderer>
+							</mx:DataGridColumn>
+					</mx:columns>
+				</mx:DataGrid>
+			</mx:target>
+			</mx:AddChild>
+			<mx:AddChild>
+				<mx:target>
+					<mx:DataGrid id="grdFriends" dataProvider="{allFriendsCollection}" width="270" height="369"  x="10" y="64"  alpha="0.3" textRollOverColor="#FF0000" alternatingItemColors="[#E8D5D5, #FFFFFF]">
+						<mx:columns>
+							<mx:DataGridColumn headerText="All Friends" dataField="uid">
+								<mx:itemRenderer>
+								<mx:Component>
+									<mx:Button  click="outerDocument.addFriend(event)"  label="Add {data.name}>>" color="#8E4F25"  initialize="init()"  labelPlacement="right" fillAlphas="[1.0, 1.0]" fillColors="[#F9F7D5, #F9F7D5]" alpha="0.0">
+									</mx:Button>
+								</mx:Component>
+								</mx:itemRenderer>
+							</mx:DataGridColumn>
+						</mx:columns>
+					</mx:DataGrid>
+				</mx:target>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<mx:Button x="439" y="468" label="Tell chosen friends" id="btnTell" click="sendNotification()"/>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<mx:TextInput x="10" y="22" width="442" id="txtTake"/>
+			</mx:AddChild>
+			<mx:AddChild position="lastChild">
+				<mx:Text x="10" y="3" text="Enter your take here." id="lblTakeLabel"/>
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+	<mx:Text x="19.5" y="10" text="Your friend's take" width="221" height="250" fontWeight="bold" textAlign="left" id="txtFriendsTake"/>
+	<mx:Button x="10" y="468" label="Send to Friends" id="button2" click="goToSend()" visible="{facebookMode}"/>
+	<mx:RadioButtonGroup id="radiogroup1"/>
+	<mx:Text id="txtUserInfo" x="10" y="396" text="{userDisplayInfo}" width="230.5"   height="64" enabled="true"/>
+	<mx:Image id="phone" x="248.5" y="10" autoLoad="true" source="phone.png"/>
+
+</mx:Application>
